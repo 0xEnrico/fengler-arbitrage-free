@@ -2,6 +2,7 @@
 from turtle import clone
 import numpy as np
 from qpsolvers import solve_qp
+import thinplate as tps
 
 def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
     impl_vols, impl_forward_, interest_rate_, plot_):
@@ -28,9 +29,7 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
     #   46253-arbitrage-free-smoothing-of-the-implied-volatility-surface
 
     # thin-plate spline
-    x = np.concatenate([fwd_moneyness, expiries], axis=None)
-    # y = (impl_vols.^2 .* maturity_)';
-    y = impl_vols
+    x = np.array([fwd_moneyness, expiries, impl_vols]).transpose()
     [thin_plate_spline] = tpaps(x, y, 1);
 
     # get maturity points and resort data so that it corresponds to expiries
