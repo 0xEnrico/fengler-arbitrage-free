@@ -3,9 +3,11 @@ from turtle import clone
 import numpy as np
 from qpsolvers import solve_qp
 import thinplate as tps
+import py_vollib.black
 
 def calcFenglerPreSmoothedPrices(strikes, expiries, \
-    impl_vols, forwards, interest_rates, fwd_moneyness_step=1e-2, lambd=0.):
+    impl_vols, forwards, interest_rates, from_log_moneyness=-1e100, to_log_moneyness=1e100, \
+    fwd_moneyness_step=1e-2, presmoother_lambda=0.):
     # This function calculates the pre-smoothed call option prices
     # In the following we assume:
     #   N: number of strikes
@@ -28,23 +30,45 @@ def calcFenglerPreSmoothedPrices(strikes, expiries, \
     #   based on https://www.mathworks.com/matlabcentral/fileexchange/ \
     #   46253-arbitrage-free-smoothing-of-the-implied-volatility-surface
 
+    # check that input is consistent
+    if len(expiries) != len(forwards):
+        raise Exception('expiries and forwards must be same length')
+    if len(expiries) != len(interest_rates):
+        raise Exception('expiries and interest_rates must be same length')
+    if np.size(impl_vols, axis=0) != len(expiries):
+        raise Exception('impl_vols rows must be same length as expiries')
+    if np.size(impl_vols, axis=1) != len(strikes):
+        raise Exception('impl_vols columns must be same length as strikes')
+
     # forward moneyness grid
     fwd_moneyness = np.array([np.array(forwards)]).transpose()/np.array(strikes)
-    kappa = np.arange(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., fwd_moneyness_step)
+    kappa = np.arange(np.floor(max(np.exp(from_log_moneyness), np.min(fwd_moneyness))*10.)/10., np.ceil(min(np.exp(to_log_moneyness), np.max(fwd_moneyness))*10.)/10., fwd_moneyness_step)
 
     # thin-plate spline
     exp_matrix = np.array([expiries]).transpose()*np.ones(np.size(impl_vols, axis=1))
     x = np.array([fwd_moneyness.flatten(), exp_matrix.flatten(), impl_vols.flatten()]).transpose()
     x = x[~np.isnan(x).any(axis=1)]
-    thin_plate_spline = tps.TPS.fit(x, 0.)
+    thin_plate_spline = tps.TPS.fit(x, presmoother_lambda)
 
-    X,Y = np.meshgrid(kappa,expiries)
-    grid=np.array([X.flatten(), Y.flatten()]).transpose()
-    impl_volsinterpolated = tps.TPS.z(grid, x, thin_plate_spline)
+    # fit implied vols
+    grid_moneyness, grid_expiry = np.meshgrid(kappa,expiries,indexing='xy')
+    grid=np.array([grid_moneyness.flatten(), grid_expiry.flatten()]).transpose()
+    impl_vols_interpolated = tps.TPS.z(grid, x, thin_plate_spline)
+    pre_smooth_call_prices = np.zeros(np.size(impl_vols_interpolated))
 
-    return grid, impl_volsinterpolated
+    # calculation of call prices
+    grid_moneyness_f, grid_forwards = np.meshgrid(kappa,forwards,indexing='xy')
+    gridf=np.array([grid_moneyness_f.flatten(), grid_forwards.flatten()]).transpose()
+    grid_moneyness_r, grid_rates = np.meshgrid(kappa,interest_rates,indexing='xy')
+    gridr=np.array([grid_moneyness_r.flatten(), grid_rates.flatten()]).transpose()
+    for i in range(0, np.size(grid, axis=0)):
+        pre_smooth_call_prices[i] = py_vollib.black.black('c', gridf[i,1], gridf[i,1]/grid[i,0], grid[i,1], gridr[i,1], impl_vols_interpolated[i])
 
-    # # calculation of call prices
+    impl_vols_interpolated = impl_vols_interpolated.reshape(np.size(grid_moneyness, axis=0), np.size(grid_moneyness, axis=1))
+    pre_smooth_call_prices = pre_smooth_call_prices.reshape(np.size(grid_moneyness, axis=0), np.size(grid_moneyness, axis=1))
+
+    return kappa, grid_moneyness, grid_expiry, impl_vols_interpolated, pre_smooth_call_prices
+
     # [~, idx] = ismember(Y,expiries);
     # option = makeVanillaOption(forward(idx).*X', Y', ones(size(idx))');
     # bs_model = makeBsModel(impl_volsinterpolated);
@@ -126,7 +150,8 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambd=1e-2):
 
     return g, gamma
 
-def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols, fwd_moneyness_step=1e-2, presmoother_lambda=0.):
+def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols, \
+    from_log_moneyness=-1e100, to_log_moneyness=1e100, fwd_moneyness_step=1e-2, presmoother_lambda=0.):
     # Function to calculate nodes of Fengler's smoothing spline
     # In the following we assume:
     #   N: number of strikes
@@ -139,22 +164,10 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     #   interest_rates: numpy array of M interest rates
     #   impl_vols: numpy 2d array M x N of implied volatilities. Must be NaN where implied vol is not defined
 
-    # check that input is consistent
-    if len(expiries) != len(forwards):
-        raise Exception('expiries and forwards must be same length')
-    if len(expiries) != len(interest_rates):
-        raise Exception('expiries and interest_rates must be same length')
-    if np.size(impl_vols, axis=0) != len(expiries):
-        raise Exception('impl_vols rows must be same length as expiries')
-    if np.size(impl_vols, axis=1) != len(strikes):
-        raise Exception('impl_vols columns must be same length as strikes')
-
     # step 1: pre-smoother
-    return calcFenglerPreSmoothedPrices(strikes, expiries, \
-        impl_vols, forwards, interest_rates, fwd_moneyness_step, presmoother_lambda)
-    pre_smooth_call_price = \
-        calcFenglerPreSmoothedPrices(strikes, fwd_moneyness, expiries, \
-        impl_vols, forwards, interest_rates)
+    kappa, grid_moneyness, grid_expiry, impl_vols_interpolated, pre_smooth_call_prices = \
+         calcFenglerPreSmoothedPrices(strikes, expiries, impl_vols, forwards, interest_rates, \
+        from_log_moneyness, to_log_moneyness, fwd_moneyness_step, presmoother_lambda)
     # step2: iterative smoothing of pricing surface
     T = len(expiries)
     K = len(kappa)
@@ -163,7 +176,7 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     u = np.zeros([K,T])
     for t in range(T-1, -1, -1):
         u[t] = kappa*forwards[t]
-        y = pre_smooth_call_price[t]
+        y = pre_smooth_call_prices[t]
         n = len(u[t])
         h = np.diff(u[t])
         # inequality constraints A x <= b
