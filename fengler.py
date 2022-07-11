@@ -4,8 +4,8 @@ import numpy as np
 from qpsolvers import solve_qp
 import thinplate as tps
 
-def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
-    impl_vols, forwards, interest_rates):
+def calcFenglerPreSmoothedPrices(strikes, expiries, \
+    impl_vols, forwards, interest_rates, fwd_moneyness_step=1e-2, lambd=0.):
     # This function calculates the pre-smoothed call option prices
     # In the following we assume:
     #   N: number of strikes
@@ -28,15 +28,21 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
     #   based on https://www.mathworks.com/matlabcentral/fileexchange/ \
     #   46253-arbitrage-free-smoothing-of-the-implied-volatility-surface
 
+    # forward moneyness grid
+    fwd_moneyness = np.array([np.array(forwards)]).transpose()/np.array(strikes)
+    kappa = np.arange(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., fwd_moneyness_step)
+
     # thin-plate spline
     exp_matrix = np.array([expiries]).transpose()*np.ones(np.size(impl_vols, axis=1))
     x = np.array([fwd_moneyness.flatten(), exp_matrix.flatten(), impl_vols.flatten()]).transpose()
     x = x[~np.isnan(x).any(axis=1)]
-    thin_plate_spline = tps.TPS.fit(x, 1.)
+    thin_plate_spline = tps.TPS.fit(x, 0.)
 
     X,Y = np.meshgrid(kappa,expiries)
-    grid=np.array([X.flatten(), Y.flatten()])
+    grid=np.array([X.flatten(), Y.flatten()]).transpose()
     impl_volsinterpolated = tps.TPS.z(grid, x, thin_plate_spline)
+
+    return grid, impl_volsinterpolated
 
     # # calculation of call prices
     # [~, idx] = ismember(Y,expiries);
@@ -120,7 +126,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambd=1e-2):
 
     return g, gamma
 
-def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols):
+def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols, fwd_moneyness_step=1e-2, presmoother_lambda=0.):
     # Function to calculate nodes of Fengler's smoothing spline
     # In the following we assume:
     #   N: number of strikes
@@ -144,10 +150,10 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
         raise Exception('impl_vols columns must be same length as strikes')
 
     # step 1: pre-smoother
-    fwd_moneyness = np.array([np.array(forwards)]).transpose()/np.array(strikes)
-    kappa = np.arange(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., 0.01)
+    return calcFenglerPreSmoothedPrices(strikes, expiries, \
+        impl_vols, forwards, interest_rates, fwd_moneyness_step, presmoother_lambda)
     pre_smooth_call_price = \
-        calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
+        calcFenglerPreSmoothedPrices(strikes, fwd_moneyness, expiries, \
         impl_vols, forwards, interest_rates)
     # step2: iterative smoothing of pricing surface
     T = len(expiries)

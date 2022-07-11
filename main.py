@@ -16,6 +16,9 @@ if __name__ == "__main__":
     # Read option data from parquet file, excluding expiries with zero forward (not enough data)
     option_data = pq.read_table("SPX_2022_03_04_10_01_00.parquet")
     option_data = option_data.filter(pa.compute.greater(option_data['F'], 0.))
+    
+    option_data = option_data.filter(pa.compute.less(option_data['T'], .5))
+
     strikes = np.unique(np.array(option_data["K"]))
     expiries = np.unique(np.array(option_data["T"]))
     impl_vols_bid = np.zeros([len(expiries),len(strikes)])
@@ -38,14 +41,19 @@ if __name__ == "__main__":
     impl_vols_ask = np.where(impl_vols_ask<=0,np.nan,impl_vols_ask)
     impl_vols = np.where(impl_vols<=0,np.nan,impl_vols)
 
-    calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols)
+    grid, impl_volsinterpolated = calcFenglerPreSmoothedPrices(strikes, expiries, impl_vols, forwards, interest_rates, fwd_moneyness_step=1e-2)
 
     # Plot option data as total implied variance
     mpl.rcParams['lines.linewidth'] = 1
     i = 0
     for T in expiries:
-        plt.scatter(strikes, impl_vols_bid[i]*impl_vols_bid[i]*T, marker=mpl.markers.CARETUP, c='b')
-        plt.scatter(strikes, impl_vols_ask[i]*impl_vols_ask[i]*T, marker=mpl.markers.CARETDOWN, c='b')
-        plt.scatter(strikes, impl_vols[i]*impl_vols[i]*T, marker='.', c='b')
+        F = forwards[i]
+        log_moneyness = np.log(F / strikes)
+        plt.scatter(log_moneyness, impl_vols_bid[i]*impl_vols_bid[i]*T, marker=mpl.markers.CARETUP, c='b')
+        plt.scatter(log_moneyness, impl_vols_ask[i]*impl_vols_ask[i]*T, marker=mpl.markers.CARETDOWN, c='b')
+        plt.scatter(log_moneyness, impl_vols[i]*impl_vols[i]*T, marker='.', c='b')
         i+=1
+
+    plt.scatter(np.log(grid[:,0]), impl_volsinterpolated*impl_volsinterpolated*grid[:,1], marker='.', c='r')
+
     plt.show()
