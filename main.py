@@ -41,10 +41,11 @@ if __name__ == "__main__":
     impl_vols_ask = np.where(impl_vols_ask<=0,np.nan,impl_vols_ask)
     impl_vols = np.where(impl_vols<=0,np.nan,impl_vols)
 
-    # kappa, grid_moneyness, grid_expiry, impl_vols_interpolated, pre_smooth_call_prices = calcFenglerPreSmoothedPrices(strikes, expiries, impl_vols, forwards, interest_rates, \
-    #     from_log_moneyness=-1, to_log_moneyness=2, fwd_moneyness_step=1e-2, presmoother_lambda=0.)
-    calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols, \
-        from_log_moneyness=-1e100, to_log_moneyness=1e100, fwd_moneyness_step=1e-2, presmoother_lambda=0.)
+    # Uncomment this to debug pre-smoother
+    kappa, grid_moneyness, grid_expiry, impl_vols_interpolated, pre_smooth_call_prices = calcFenglerPreSmoothedPrices(strikes, expiries, impl_vols, forwards, interest_rates, \
+        from_log_moneyness=-0.5, to_log_moneyness=1., fwd_moneyness_step=1e-2, presmoother_lambda=0.)
+    # calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vols, \
+    #     from_log_moneyness=-0.5, to_log_moneyness=1., fwd_moneyness_step=1e-2, presmoother_lambda=0.)
 
     # Plot option data as total implied variance
     mpl.rcParams['lines.linewidth'] = 1
@@ -57,6 +58,7 @@ if __name__ == "__main__":
         plt.scatter(log_moneyness, impl_vols[i]*impl_vols[i]*T, marker='.', c='b')
         i+=1
 
-    # plt.scatter(np.log(grid_moneyness).flatten(), (impl_vols_interpolated*impl_vols_interpolated*grid_expiry).flatten(), marker='.', c='r')
+    # Uncomment this to debug pre-smoother
+    plt.scatter(np.log(grid_moneyness).flatten(), (impl_vols_interpolated*impl_vols_interpolated*grid_expiry).flatten(), marker='.', c='r')
 
     plt.show()

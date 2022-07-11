@@ -132,7 +132,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambd=1e-2):
     B = np.vstack([np.hstack([np.diag(np.ones(n)), np.zeros([n, np.size(R, axis=1)])]), np.hstack([np.zeros([np.size(R, axis=0), n]), lambd*R])])
 
     # initial guess
-    x0 = y.clone()
+    x0 = np.copy(y)
     x0[n:] = 1e-3
 
     # equality constraint Aeq x = beq
@@ -171,9 +171,9 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     # step2: iterative smoothing of pricing surface
     T = len(expiries)
     K = len(kappa)
-    g = np.zeros([K,T])
-    gamma = np.zeros([K,T])
-    u = np.zeros([K,T])
+    g = np.zeros([T,K])
+    gamma = np.zeros([T,K])
+    u = np.zeros([T,K])
     for t in range(T-1, -1, -1):
         u[t] = kappa*forwards[t]
         y = pre_smooth_call_prices[t]
@@ -186,7 +186,7 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
             np.concatenate([np.zeros(n-2), -1./h[n-2], 1./h[n-2], np.zeros(n-3), h[n-2]/6.], axis=None)])
         b = np.array([np.exp(-expiries[t]*interest_rates[t]), 0])
         # set-up lower bound
-        lb = np.concatenate([np.max(np.exp(-interest_rates[t]*expiries[t])*(forwards[t]-u[t].transpose()), 0.), np.zeros(n-2)], axis=None)
+        lb = np.concatenate([np.maximum(np.exp(-interest_rates[t]*expiries[t])*(forwards[t]-u[t].transpose()), 0.), np.zeros(n-2)], axis=None)
         # set-up upper bound
         if t == T-1:
             ub = np.concatenate([np.exp(-interest_rates[t]*expiries[t])*forwards[t], np.full(2*n-3, np.inf)], axis=None)
