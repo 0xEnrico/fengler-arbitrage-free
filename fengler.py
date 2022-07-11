@@ -29,11 +29,13 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
     #   46253-arbitrage-free-smoothing-of-the-implied-volatility-surface
 
     # thin-plate spline
-    exp_matrix = np.matrix(np.array(forwards)).transpose()*np.ones(np.size(impl_vols, axis=1))
+    exp_matrix = np.array([expiries]).transpose()*np.ones(np.size(impl_vols, axis=1))
     x = np.array([fwd_moneyness.flatten(), exp_matrix.flatten(), impl_vols.flatten()]).transpose()
+    x = x[~np.isnan(x).any(axis=1)]
     thin_plate_spline = tps.TPS.fit(x, 1.)
 
-    grid = np.meshgrid(kappa,expiries)
+    X,Y = np.meshgrid(kappa,expiries)
+    grid=np.array([X.flatten(), Y.flatten()])
     impl_volsinterpolated = tps.TPS.z(grid, x, thin_plate_spline)
 
     # # calculation of call prices
@@ -49,7 +51,7 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
 
     # return pre_smooth_call_price
 
-def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda_=1e-2):
+def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambd=1e-2):
     # Function to solve the quadratic program of Fenlger's implied volatility
     # surface smoothing algorithm
     # In
@@ -59,7 +61,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda_=1e-2):
     #   b [vector]: Vector of inequality values
     #   lb [vector]: Lower bound
     #   ub [vector]: Upper bound
-    #   lambda_ [float]: Smoothing parameter
+    #   lambd [float]: Smoothing parameter
     # Out
     #   g [vector]: Vector of smoothed call option prices
     #   gamma [vector]: Vector of second derivatives at nodes
@@ -97,7 +99,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda_=1e-2):
     y = np.concatenate([y, np.zeros(n-2)], axis=None)
 
     #quadratic term
-    B = np.vstack([np.hstack([np.diag(np.ones(n)), np.zeros([n, np.size(R, axis=1)])]), np.hstack([np.zeros([np.size(R, axis=0), n]), lambda_*R])])
+    B = np.vstack([np.hstack([np.diag(np.ones(n)), np.zeros([n, np.size(R, axis=1)])]), np.hstack([np.zeros([np.size(R, axis=0), n]), lambd*R])])
 
     # initial guess
     x0 = y.clone()
@@ -129,7 +131,7 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     #   forwards: numpy array of M forwards
     #   expiries: numpy array of M time-to-expiries (must be in increasing order)
     #   interest_rates: numpy array of M interest rates
-    #   impl_vols: numpy matrix M x N of implied volatilities
+    #   impl_vols: numpy 2d array M x N of implied volatilities. Must be NaN where implied vol is not defined
 
     # check that input is consistent
     if len(expiries) != len(forwards):
@@ -142,7 +144,7 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
         raise Exception('impl_vols columns must be same length as strikes')
 
     # step 1: pre-smoother
-    fwd_moneyness = np.matrix(np.array(forwards)).transpose()/np.array(strikes)
+    fwd_moneyness = np.array([np.array(forwards)]).transpose()/np.array(strikes)
     kappa = np.arange(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., 0.01)
     pre_smooth_call_price = \
         calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \

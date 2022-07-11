@@ -32,6 +32,8 @@ if __name__ == "__main__":
         forwards.append(option_data_single_expiry["F"][0].as_py())
         interest_rates.append(option_data_single_expiry["R"][0].as_py())
         i+=1
+
+    # In the dataset, implied vols < 0 are undefined, we need to convert them to NaN before calling calibFenglerSplineNodes
     impl_vols_bid = np.where(impl_vols_bid<=0,np.nan,impl_vols_bid)
     impl_vols_ask = np.where(impl_vols_ask<=0,np.nan,impl_vols_ask)
     impl_vols = np.where(impl_vols<=0,np.nan,impl_vols)

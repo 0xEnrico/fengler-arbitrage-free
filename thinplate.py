@@ -11,15 +11,15 @@ class TPS:
         n = c.shape[0]
 
         U = TPS.u(TPS.d(c, c))
-        K = U + np.eye(n, dtype=np.float32)*lambd
+        K = U + np.eye(n, dtype=np.float64)*lambd
 
-        P = np.ones((n, 3), dtype=np.float32)
+        P = np.ones((n, 3), dtype=np.float64)
         P[:, 1:] = c[:, :2]
 
-        v = np.zeros(n+3, dtype=np.float32)
+        v = np.zeros(n+3, dtype=np.float64)
         v[:n] = c[:, -1]
 
-        A = np.zeros((n+3, n+3), dtype=np.float32)
+        A = np.zeros((n+3, n+3), dtype=np.float64)
         A[:n, :n] = K
         A[:n, -3:] = P
         A[-3:, :n] = P.T
@@ -62,8 +62,8 @@ def uniform_grid(shape):
 
     H,W = shape[:2]    
     c = np.empty((H, W, 2))
-    c[..., 0] = np.linspace(0, 1, W, dtype=np.float32)
-    c[..., 1] = np.expand_dims(np.linspace(0, 1, H, dtype=np.float32), -1)
+    c[..., 0] = np.linspace(0, 1, W, dtype=np.float64)
+    c[..., 1] = np.expand_dims(np.linspace(0, 1, H, dtype=np.float64), -1)
 
     return c
     
@@ -109,7 +109,7 @@ def tps_grid_to_remap(grid, sshape):
     mapy : HxW array
     '''
 
-    mx = (grid[:, :, 0] * sshape[1]).astype(np.float32)
-    my = (grid[:, :, 1] * sshape[0]).astype(np.float32)
+    mx = (grid[:, :, 0] * sshape[1]).astype(np.float64)
+    my = (grid[:, :, 1] * sshape[0]).astype(np.float64)
 
     return mx, my
