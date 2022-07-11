@@ -175,8 +175,8 @@ def calcFenglerSpline(v, u, g, gamma):
                         + (1.+(u[i+1]-v[s])/h)*gamma[i])
       
         if v[s] < np.min(u):
-            dg = (g[2]-g[1])/(u[2]-u[1]) - (u[2]-u[1])/6.*gamma[2]
-            smooth_prices[s] = g[1] - (u[1] - v[s])*dg
+            dg = (g[1]-g[0])/(u[1]-u[0]) - (u[1]-u[0])/6.*gamma[1]
+            smooth_prices[s] = g[0] - (u[0] - v[s])*dg
         
         if v[s] > np.max(u):
             dg = (g[n]-g[n-1])/(u[n]-u[n-1]) + (u[n]-u[n-1])/6.*gamma[n-1]
