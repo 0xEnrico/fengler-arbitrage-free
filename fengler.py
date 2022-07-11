@@ -235,15 +235,19 @@ def calcFenglerSmoothIvQs(strikes, forwards, expiries, interest_rates, impl_vols
         g[t], gamma[t] = solveFenglerQuadraticProgram(u[t], h, y, A, b, lb, ub)
 
     # calculate smooth call price and implied vol
-    smooth_call_price = np.full([T,K], np.nan)
-    smooth_impl_vol = np.full([T,K], np.nan)
-    smooth_total_variance = np.full([T,K], np.nan)
+    S = len(strikes)
+    smooth_call_price = np.full([T,S], np.nan)
+    smooth_impl_vol = np.full([T,S], np.nan)
+    smooth_total_variance = np.full([T,S], np.nan)
     for t in range(0,T):
         if not np.any(np.isnan(g[t])) and not np.any(np.isnan(gamma[t])):
-            smooth_call_price[t] = calcFenglerSpline(kappa, u[t], g[t], gamma[t])
-            for i in range(0, K):
-                smooth_impl_vol[t][i] = py_vollib.black.implied_volatility.implied_volatility(smooth_call_price[t][i], forwards[t], forwards[t]/kappa[i], interest_rates[t], expiries[t], 'c')
+            smooth_call_price[t] = calcFenglerSpline(strikes, u[t], g[t], gamma[t])
+            for i in range(0, S):
+                try:
+                    smooth_impl_vol[t][i] = py_vollib.black.implied_volatility.implied_volatility(smooth_call_price[t][i], forwards[t], strikes[i], interest_rates[t], expiries[t], 'c')
+                except:
+                    smooth_impl_vol[t][i] = np.nan
         smooth_total_variance[t] = (smooth_impl_vol[t]**2)*expiries[t]
 
-    grid_moneyness, grid_expiry = np.meshgrid(kappa,expiries,indexing='xy')
+    grid_moneyness = np.array([np.array(forwards)]).transpose()/np.array(strikes)
     return grid_moneyness, smooth_call_price, smooth_impl_vol, smooth_total_variance
