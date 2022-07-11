@@ -29,7 +29,8 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
     #   46253-arbitrage-free-smoothing-of-the-implied-volatility-surface
 
     # thin-plate spline
-    x = np.array([fwd_moneyness, expiries, impl_vols]).transpose()
+    exp_matrix = np.matrix(np.array(forwards)).transpose()*np.ones(np.size(impl_vols, axis=1))
+    x = np.array([fwd_moneyness.flatten(), exp_matrix.flatten(), impl_vols.flatten()]).transpose()
     thin_plate_spline = tps.TPS.fit(x, 1.)
 
     grid = np.meshgrid(kappa,expiries)
@@ -130,9 +131,19 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     #   interest_rates: numpy array of M interest rates
     #   impl_vols: numpy matrix M x N of implied volatilities
 
+    # check that input is consistent
+    if len(expiries) != len(forwards):
+        raise Exception('expiries and forwards must be same length')
+    if len(expiries) != len(interest_rates):
+        raise Exception('expiries and interest_rates must be same length')
+    if np.size(impl_vols, axis=0) != len(expiries):
+        raise Exception('impl_vols rows must be same length as expiries')
+    if np.size(impl_vols, axis=1) != len(strikes):
+        raise Exception('impl_vols columns must be same length as strikes')
+
     # step 1: pre-smoother
-    fwd_moneyness = np.matrix(np.array(forwards)).transpose()*np.array(strikes)
-    kappa = range(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., 0.01)
+    fwd_moneyness = np.matrix(np.array(forwards)).transpose()/np.array(strikes)
+    kappa = np.arange(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., 0.01)
     pre_smooth_call_price = \
         calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
         impl_vols, forwards, interest_rates)

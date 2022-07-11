@@ -13,8 +13,9 @@ import matplotlib as mpl
 
 if __name__ == "__main__":
 
-    # Read option data from parquet file
+    # Read option data from parquet file, excluding expiries with zero forward (not enough data)
     option_data = pq.read_table("SPX_2022_03_04_10_01_00.parquet")
+    option_data = option_data.filter(pa.compute.greater(option_data['F'], 0.))
     strikes = np.unique(np.array(option_data["K"]))
     expiries = np.unique(np.array(option_data["T"]))
     impl_vols_bid = np.zeros([len(expiries),len(strikes)])
@@ -28,8 +29,8 @@ if __name__ == "__main__":
         impl_vols_bid[i] = np.array(option_data_single_expiry["IV_Bid"])
         impl_vols_ask[i] = np.array(option_data_single_expiry["IV_Ask"])
         impl_vols[i] = np.array(option_data_single_expiry["IV"])
-        forwards.append(option_data_single_expiry["F"][0])
-        interest_rates.append(option_data_single_expiry["R"][0])
+        forwards.append(option_data_single_expiry["F"][0].as_py())
+        interest_rates.append(option_data_single_expiry["R"][0].as_py())
         i+=1
     impl_vols_bid = np.where(impl_vols_bid<=0,np.nan,impl_vols_bid)
     impl_vols_ask = np.where(impl_vols_ask<=0,np.nan,impl_vols_ask)
