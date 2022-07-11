@@ -5,7 +5,7 @@ from qpsolvers import solve_qp
 import thinplate as tps
 
 def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
-    impl_vols, impl_forward_, interest_rate_, plot_):
+    impl_vols, forwards, interest_rates):
     # This function calculates the pre-smoothed call option prices
     # In the following we assume:
     #   N: number of strikes
@@ -30,51 +30,25 @@ def calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
 
     # thin-plate spline
     x = np.array([fwd_moneyness, expiries, impl_vols]).transpose()
-    [thin_plate_spline] = tpaps(x, y, 1);
+    thin_plate_spline = tps.TPS.fit(x, 1.)
 
-    # get maturity points and resort data so that it corresponds to expiries
-    [expiries, idx] = unique(expiries);
-    forward = impl_forward_(idx);
-    interest_rate = interest_rate_(idx);
+    grid = np.meshgrid(kappa,expiries)
+    impl_volsinterpolated = tps.TPS.z(grid, x, thin_plate_spline)
 
-    [X,Y] = meshgrid(kappa,expiries);
-    X = reshape(X,1,numel(X));
-    Y = reshape(Y,1,numel(Y));
-    XY = [X; Y];
-    # total_variance_interpolated = fnval(thin_plate_spline, XY);
-    impl_volsinterpolated = fnval(thin_plate_spline, XY)';
+    # # calculation of call prices
+    # [~, idx] = ismember(Y,expiries);
+    # option = makeVanillaOption(forward(idx).*X', Y', ones(size(idx))');
+    # bs_model = makeBsModel(impl_volsinterpolated);
+    # mkt_data = makeMarketData(NaN, forward(idx), interest_rate(idx), NaN);
+    # pre_smooth_call_price = calcBsPriceAnalytic(bs_model, option, mkt_data, \
+    #     'forward');
 
-    # remove all kappas where total variance is non-positive
-    if any(impl_volsinterpolated<=0)
-    # if any(total_variance_interpolated<=0)
-        pos_neg = impl_volsinterpolated<=0;
-    #     pos_neg = total_variance_interpolated<=0;
-        kappas_neg = unique(X(pos_neg));
-        pos_delete = ismember(X,kappas_neg);
-        impl_volsinterpolated = impl_volsinterpolated(~pos_delete);
-    #     total_variance_interpolated = total_variance_interpolated(~pos_delete);
-        X = X(~pos_delete);
-        Y = Y(~pos_delete);
-        kappa = kappa(~ismember(kappa, kappas_neg));
-    end
+    # # ensure that output dimensions are correct, each column is one smile
+    # pre_smooth_call_price = reshape(pre_smooth_call_price, length(expiries), length(kappa)) 
 
-    # impl_volsinterpolated = sqrt(total_variance_interpolated./Y)';
+    # return pre_smooth_call_price
 
-    # calculation of call prices
-    [~, idx] = ismember(Y,expiries);
-    option = makeVanillaOption(forward(idx).*X', Y', ones(size(idx))');
-    bs_model = makeBsModel(impl_volsinterpolated);
-    mkt_data = makeMarketData(NaN, forward(idx), interest_rate(idx), NaN);
-    pre_smooth_call_price = calcBsPriceAnalytic(bs_model, option, mkt_data, \
-        'forward');
-
-    # ensure that output dimensions are correct, each column is one smile
-    pre_smooth_call_price = reshape(pre_smooth_call_price, length(expiries), \
-        length(kappa))'; 
-
-    return pre_smooth_call_price
-
-def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda=1e-2):
+def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda_=1e-2):
     # Function to solve the quadratic program of Fenlger's implied volatility
     # surface smoothing algorithm
     # In
@@ -84,7 +58,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda=1e-2):
     #   b [vector]: Vector of inequality values
     #   lb [vector]: Lower bound
     #   ub [vector]: Upper bound
-    #   lambda [float]: Smoothing parameter
+    #   lambda_ [float]: Smoothing parameter
     # Out
     #   g [vector]: Vector of smoothed call option prices
     #   gamma [vector]: Vector of second derivatives at nodes
@@ -97,7 +71,6 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda=1e-2):
     # check that input is consistent
     if len(y) != len(u):
         raise Exception('length of y is incorrect')
-    end
 
     lb = np.where(lb>ub,ub,lb)
 
@@ -123,7 +96,7 @@ def solveFenglerQuadraticProgram(u, h, y, A, b, lb, ub, lambda=1e-2):
     y = np.concatenate([y, np.zeros(n-2)], axis=None)
 
     #quadratic term
-    B = np.vstack([np.hstack([np.diag(np.ones(n)), np.zeros([n, np.size(R, axis=1)])]), np.hstack([np.zeros([np.size(R, axis=0), n]), lambda*R])])
+    B = np.vstack([np.hstack([np.diag(np.ones(n)), np.zeros([n, np.size(R, axis=1)])]), np.hstack([np.zeros([np.size(R, axis=0), n]), lambda_*R])])
 
     # initial guess
     x0 = y.clone()
@@ -158,11 +131,11 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     #   impl_vols: numpy matrix M x N of implied volatilities
 
     # step 1: pre-smoother
-    fwd_moneyness = np.matrix(np.array(forwards)).transpose()/np.array(strikes)
+    fwd_moneyness = np.matrix(np.array(forwards)).transpose()*np.array(strikes)
     kappa = range(np.floor(np.min(fwd_moneyness*10.))/10., np.ceil(np.max(fwd_moneyness*10.))/10., 0.01)
     pre_smooth_call_price = \
         calcFenglerPreSmoothedPrices(kappa, fwd_moneyness, expiries, \
-        impl_vols, forward, interest_rate)
+        impl_vols, forwards, interest_rates)
     # step2: iterative smoothing of pricing surface
     T = len(expiries)
     K = len(kappa)
@@ -170,7 +143,7 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
     gamma = np.zeros([K,T])
     u = np.zeros([K,T])
     for t in range(T-1, -1, -1):
-        u[t] = kappa*forward_tau[t]
+        u[t] = kappa*forwards[t]
         y = pre_smooth_call_price[t]
         n = len(u[t])
         h = np.diff(u[t])
@@ -179,13 +152,12 @@ def calibFenglerSplineNodes(strikes, forwards, expiries, interest_rates, impl_vo
         #  (g_n - g_(n-1))/h_(n-1) + h_(n-1)/6 gamma(n-1) <= 0
         A = np.matrix([np.concatenate([1./h[0], -1./h[0], np.zeros(n-2), h[0]/6., np.zeros(n-3)], axis=None), \
             np.concatenate([np.zeros(n-2), -1./h[n-2], 1./h[n-2], np.zeros(n-3), h[n-2]/6.], axis=None)])
-        b = np.array([np.exp(-expiries[t]*interest_rate[t]), 0])
+        b = np.array([np.exp(-expiries[t]*interest_rates[t]), 0])
         # set-up lower bound
-        lb = np.concatenate([np.max(np.exp(-interest_rate_tau[t]*expiries[t])*(forward_tau[t]-u[t].transpose()), 0.), np.zeros(n-2)], axis=None)
+        lb = np.concatenate([np.max(np.exp(-interest_rates[t]*expiries[t])*(forwards[t]-u[t].transpose()), 0.), np.zeros(n-2)], axis=None)
         # set-up upper bound
         if t == T-1:
-            ub = np.concatenate([np.exp(-interest_rate_tau[t]*expiries[t])*forward_tau[t], np.full(2*n-3, np.inf)], axis=None)
+            ub = np.concatenate([np.exp(-interest_rates[t]*expiries[t])*forwards[t], np.full(2*n-3, np.inf)], axis=None)
         else:
-            ub = np.concatenate([np.exp(interest_rate_tau[t+1]*expiries[t+1]-interest_rate_tau[t]*expiries[t])*forward_tau[t]/forward_tau[t+1]*g[t+1].transpose(), np.full(n-2, np.inf)], axis=None)
-        end
+            ub = np.concatenate([np.exp(interest_rates[t+1]*expiries[t+1]-interest_rates[t]*expiries[t])*forwards[t]/forwards[t+1]*g[t+1].transpose(), np.full(n-2, np.inf)], axis=None)
         g[t], gamma[t] = solveFenglerQuadraticProgram(u[t], h, y, A, b, lb, ub)
