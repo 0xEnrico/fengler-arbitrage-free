@@ -41,12 +41,18 @@ if __name__ == "__main__":
     impl_vols_ask = np.where(impl_vols_ask<=0,np.nan,impl_vols_ask)
     impl_vols = np.where(impl_vols<=0,np.nan,impl_vols)
 
+    # Fitter parameters
+    from_log_moneyness = -0.5
+    to_log_moneyness = 1.
+    fwd_moneyness_step = 1e-2
+    presmoother_lambda = 0.
+
     # Uncomment this to debug the pre-smoother
     # kappa, grid_moneyness, grid_expiry, impl_vols_interpolated, pre_smooth_call_prices = calcFenglerPreSmoothedPrices(strikes, expiries, impl_vols, forwards, interest_rates, \
-    #     from_log_moneyness=-0.5, to_log_moneyness=1., fwd_moneyness_step=1e-2, presmoother_lambda=0.)
+    #     from_log_moneyness=from_log_moneyness, to_log_moneyness=to_log_moneyness, fwd_moneyness_step=fwd_moneyness_step, presmoother_lambda=presmoother_lambda)
 
     grid_moneyness, smooth_call_price, smooth_impl_vol, smooth_total_variance = calcFenglerSmoothIvQs(strikes, forwards, expiries, interest_rates, impl_vols, \
-        from_log_moneyness=-0.5, to_log_moneyness=1., fwd_moneyness_step=1e-2, presmoother_lambda=0.)
+        from_log_moneyness=from_log_moneyness, to_log_moneyness=to_log_moneyness, fwd_moneyness_step=fwd_moneyness_step, presmoother_lambda=presmoother_lambda)
 
     # Plot option data as total implied variance
     mpl.rcParams['lines.linewidth'] = 1
